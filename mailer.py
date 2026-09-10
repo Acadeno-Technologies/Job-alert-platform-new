@@ -13,12 +13,20 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 import sys
+import re
 
 if hasattr(sys.stdout, 'reconfigure'):
     try:
         sys.stdout.reconfigure(encoding='utf-8')
     except Exception:
         pass
+
+def parse_secrets_list(val):
+    if not val:
+        return []
+    # Split on commas, semicolons, carriage returns, or newlines
+    items = re.split(r'[,;\r\n]+', str(val))
+    return [i.replace('\r', '').replace('\n', '').strip() for i in items if i.strip()]
 
 # ==========================================================
 # LOAD STUDENTS
@@ -30,17 +38,16 @@ def load_students():
     student_names = os.getenv("STUDENT_NAMES")
 
     if email_to:
-        emails = [e.strip() for e in email_to.split(",") if e.strip()]
-        if student_names:
-            names = [n.strip().title() for n in student_names.split(",") if n.strip()]
-        else:
-            names = []
+        emails = parse_secrets_list(email_to)
+        names = parse_secrets_list(student_names)
 
         # Ensure names array is as long as emails array
         while len(names) < len(emails):
             idx = len(names)
-            fallback_name = emails[idx].split("@")[0].replace(".", " ").title()
+            fallback_name = emails[idx].split("@")[0].replace(".", " ").replace("_", " ").title()
             names.append(fallback_name)
+
+        names = names[:len(emails)]
 
         print("Using GitHub Secrets / Environment Variables")
         return names, emails
@@ -403,8 +410,14 @@ def send_all_emails():
         print(f"\n[ERROR] SMTP Connection Error: {err}")
         sys.exit(1)
 
-    for email, name in zip(EMAIL_TO, USER_NAME):
-        formatted_name = name.strip().title() if name else "Subscriber"
+    for raw_email, raw_name in zip(EMAIL_TO, USER_NAME):
+        clean_email = str(raw_email).replace("\r", "").replace("\n", "").strip()
+        clean_name = str(raw_name).replace("\r", "").replace("\n", "").strip()
+
+        if not clean_email or "@" not in clean_email:
+            continue
+
+        formatted_name = clean_name.title() if clean_name else "Subscriber"
 
         html = html_template.replace(
             "{USER_NAME}",
@@ -417,7 +430,7 @@ def send_all_emails():
 
         msg["Subject"] = f"Today's Verified IT Openings - {today}"
         msg["From"] = f"Acadeno Careers <{EMAIL_USER}>"
-        msg["To"] = email
+        msg["To"] = clean_email
         msg["Reply-To"] = EMAIL_USER
         msg["X-Mailer"] = "Acadeno Job Alert Platform"
 
@@ -425,7 +438,7 @@ def send_all_emails():
         msg.attach(MIMEText(html, "html"))
 
         server.send_message(msg)
-        print(f"[OK] Email sent to {formatted_name} ({email})")
+        print(f"[OK] Email sent to {formatted_name} ({clean_email})")
 
     server.quit()
 
