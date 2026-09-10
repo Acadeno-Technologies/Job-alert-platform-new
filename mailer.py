@@ -116,6 +116,9 @@ if EMAIL_PASS:
 
 USER_NAME, EMAIL_TO = load_students()
 
+# *** CRITICAL FIX: Sanitize EMAIL_TO list to remove all newlines and carriage returns ***
+EMAIL_TO = [email.replace("\r", "").replace("\n", "").strip() for email in EMAIL_TO if email.strip()]
+
 print("=" * 60)
 print("Sender Email :", EMAIL_USER)
 print("Recipients   :", EMAIL_TO)
@@ -429,10 +432,12 @@ def send_all_emails():
         sys.exit(1)
 
     for raw_email, raw_name in zip(EMAIL_TO, USER_NAME):
+        # *** CRITICAL FIX: Sanitize each email and name - remove all newlines and carriage returns ***
         clean_email = str(raw_email).replace("\r", "").replace("\n", "").strip()
         clean_name = str(raw_name).replace("\r", "").replace("\n", "").strip()
 
         if not clean_email or "@" not in clean_email:
+            print(f"[SKIP] Invalid email format: {clean_email}")
             continue
 
         formatted_name = clean_name.title() if clean_name else "Subscriber"
@@ -446,10 +451,15 @@ def send_all_emails():
 
         msg = MIMEMultipart("alternative")
 
-        msg["Subject"] = f"Today's Verified IT Openings - {today}".replace("\r", "").replace("\n", "").strip()
-        msg["From"] = f"Acadeno Careers <{EMAIL_USER}>".replace("\r", "").replace("\n", "").strip()
+        # *** CRITICAL FIX: Sanitize all header values ***
+        subject = f"Today's Verified IT Openings - {today}".replace("\r", "").replace("\n", "").strip()
+        from_addr = f"Acadeno Careers <{EMAIL_USER}>".replace("\r", "").replace("\n", "").strip()
+        reply_to = str(EMAIL_USER).replace("\r", "").replace("\n", "").strip()
+
+        msg["Subject"] = subject
+        msg["From"] = from_addr
         msg["To"] = clean_email
-        msg["Reply-To"] = str(EMAIL_USER).replace("\r", "").replace("\n", "").strip()
+        msg["Reply-To"] = reply_to
         msg["X-Mailer"] = "Acadeno Job Alert Platform"
 
         msg.attach(MIMEText(plain_text, "plain"))
