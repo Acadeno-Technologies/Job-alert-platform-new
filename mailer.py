@@ -92,10 +92,10 @@ EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 
 if EMAIL_USER:
-    EMAIL_USER = EMAIL_USER.strip()
+    EMAIL_USER = EMAIL_USER.replace("\r", "").replace("\n", "").strip()
 
 if EMAIL_PASS:
-    EMAIL_PASS = EMAIL_PASS.replace(" ", "").strip()
+    EMAIL_PASS = EMAIL_PASS.replace(" ", "").replace("\r", "").replace("\n", "").strip()
 
 USER_NAME, EMAIL_TO = load_students()
 
@@ -429,17 +429,17 @@ def send_all_emails():
 
         msg = MIMEMultipart("alternative")
 
-        msg["Subject"] = f"Today's Verified IT Openings - {today}"
-        msg["From"] = f"Acadeno Careers <{EMAIL_USER}>"
+        msg["Subject"] = f"Today's Verified IT Openings - {today}".replace("\r", "").replace("\n", "").strip()
+        msg["From"] = f"Acadeno Careers <{EMAIL_USER}>".replace("\r", "").replace("\n", "").strip()
         msg["To"] = clean_email
-        msg["Reply-To"] = EMAIL_USER
+        msg["Reply-To"] = str(EMAIL_USER).replace("\r", "").replace("\n", "").strip()
         msg["X-Mailer"] = "Acadeno Job Alert Platform"
 
         msg.attach(MIMEText(plain_text, "plain"))
         msg.attach(MIMEText(html, "html"))
 
         try:
-            server.send_message(msg)
+            server.send_message(msg, to_addrs=[clean_email])
             print(f"[OK] Email sent to {formatted_name} ({clean_email})")
         except Exception as send_err:
             print(f"[ERROR] Failed to send email to {formatted_name} ({clean_email}): {send_err}")
