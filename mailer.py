@@ -12,61 +12,68 @@ from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+import sys
+
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 # ==========================================================
 # LOAD STUDENTS
 # ==========================================================
 
 def load_students():
-
-    # GitHub Actions
+    # GitHub Actions or Environment Variables
     email_to = os.getenv("EMAIL_TO")
     student_names = os.getenv("STUDENT_NAMES")
 
-    if email_to and student_names:
+    if email_to:
+        emails = [e.strip() for e in email_to.split(",") if e.strip()]
+        if student_names:
+            names = [n.strip().title() for n in student_names.split(",") if n.strip()]
+        else:
+            names = []
 
-        emails = [
-            e.strip()
-            for e in email_to.split(",")
-            if e.strip()
-        ]
+        # Ensure names array is as long as emails array
+        while len(names) < len(emails):
+            idx = len(names)
+            fallback_name = emails[idx].split("@")[0].replace(".", " ").title()
+            names.append(fallback_name)
 
-        names = [
-            n.strip().title()
-            for n in student_names.split(",")
-            if n.strip()
-        ]
-
-        print("Using GitHub Secrets")
-
+        print("Using GitHub Secrets / Environment Variables")
         return names, emails
 
     # Local SQLite Database
+    if os.path.exists("users.db"):
+        print("Using SQLite Database")
+        try:
+            conn = sqlite3.connect("users.db")
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT name, email
+                FROM students
+                ORDER BY id
+            """)
+            rows = cursor.fetchall()
+            conn.close()
 
-    print("Using SQLite Database")
+            names = [row[0].strip().title() if row[0] else "" for row in rows]
+            emails = [row[1].strip() for row in rows if row[1]]
 
-    conn = sqlite3.connect("users.db")
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT name, email
-        FROM students
-        ORDER BY id
-    """)
-
-    rows = cursor.fetchall()
-
-    conn.close()
-
-    names = [row[0].strip().title() if row[0] else "" for row in rows]
-    emails = [row[1].strip() for row in rows if row[1]]
+            if emails:
+                return names, emails
+        except Exception as e:
+            print("Note reading users.db:", e)
 
     # Fallback to EMAIL_USER if no recipient found
-    if not emails and os.getenv("EMAIL_USER"):
+    if os.getenv("EMAIL_USER"):
         fallback_email = os.getenv("EMAIL_USER").strip()
-        names = ["Test Recipient"]
-        emails = [fallback_email]
+        print(f"Fallback recipient: {fallback_email}")
+        return ["Subscriber"], [fallback_email]
 
-    return names, emails
+    return [], []
 
 
 # ==========================================================
@@ -91,7 +98,7 @@ print("Names        :", USER_NAME)
 print("=" * 60)
 
 if not EMAIL_USER or not EMAIL_PASS:
-    print("⚠️ WARNING: EMAIL_USER or EMAIL_PASS missing in .env file.")
+    print("[WARNING] EMAIL_USER or EMAIL_PASS missing in .env file.")
     print("To send real emails, create a .env file with your Gmail credentials.")
 
 # ==========================================================
@@ -361,15 +368,13 @@ Best Wishes,<br>
 
 def send_all_emails():
     if not EMAIL_USER or not EMAIL_PASS:
-        print("\n❌ Error: Cannot send email because EMAIL_USER or EMAIL_PASS is missing in .env!")
-        print("Please create a .env file with:")
-        print("EMAIL_USER=your_email@gmail.com")
-        print("EMAIL_PASS=your_app_password")
-        return
+        print("\n[ERROR] Cannot send email because EMAIL_USER or EMAIL_PASS is missing in .env / GitHub Secrets!")
+        print("Please set EMAIL_USER and EMAIL_PASS.")
+        sys.exit(1)
 
     if not EMAIL_TO:
-        print("\n❌ Error: No recipients found to send emails.")
-        return
+        print("\n[ERROR] No recipients found to send emails.")
+        sys.exit(1)
 
     print(f"\nConnecting to Gmail SMTP as '{EMAIL_USER}' (App Password length: {len(EMAIL_PASS)} chars)...")
 
@@ -380,7 +385,7 @@ def send_all_emails():
         print("Login Successful!\n")
     except smtplib.SMTPAuthenticationError as auth_err:
         print("\n" + "!" * 70)
-        print("❌ GMAIL SMTP AUTHENTICATION FAILED (Error 535 / BadCredentials)")
+        print("[ERROR] GMAIL SMTP AUTHENTICATION FAILED (Error 535 / BadCredentials)")
         print("!" * 70)
         print(f"User Attempted: '{EMAIL_USER}'")
         print("\nCommon Causes & Solutions:")
@@ -393,7 +398,10 @@ def send_all_emails():
         print("\n 3. Email mismatch:")
         print(f"    Ensure '{EMAIL_USER}' is the EXACT Google account where the App Password was created.")
         print("!" * 70 + "\n")
-        return
+        sys.exit(1)
+    except Exception as err:
+        print(f"\n[ERROR] SMTP Connection Error: {err}")
+        sys.exit(1)
 
     for email, name in zip(EMAIL_TO, USER_NAME):
         formatted_name = name.strip().title() if name else "Subscriber"
@@ -417,7 +425,7 @@ def send_all_emails():
         msg.attach(MIMEText(html, "html"))
 
         server.send_message(msg)
-        print(f"✓ Email sent to {formatted_name} ({email})")
+        print(f"[OK] Email sent to {formatted_name} ({email})")
 
     server.quit()
 
