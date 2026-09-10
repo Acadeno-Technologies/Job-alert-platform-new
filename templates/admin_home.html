@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - Acadeno Technologies</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+    body {
+      background-color: #f4f6fb;
+      color: #1e293b;
+      min-height: 100vh;
+    }
+    .header {
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+    }
+    .brand h1 {
+      font-size: 20px;
+      color: #5f2cff;
+      font-weight: 700;
+    }
+    .logout-btn {
+      background: #fee2e2;
+      color: #dc2626;
+      padding: 8px 16px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .logout-btn:hover { background: #fca5a5; }
+
+    .container {
+      max-width: 1100px;
+      margin: 32px auto;
+      padding: 0 20px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+    @media (max-width: 768px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+      border: 1px solid #e2e8f0;
+      margin-bottom: 32px;
+    }
+    .card h2 {
+      font-size: 16px;
+      color: #1e1b4b;
+      margin-bottom: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #475569;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus {
+      border-color: #5f2cff;
+    }
+    .btn-submit {
+      background: #5f2cff;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 4px;
+    }
+    .btn-submit:hover { background: #4318ff; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 12px;
+    }
+    th {
+      background: #fafafa;
+      text-align: left;
+      padding: 12px 16px;
+      color: #64748b;
+      font-weight: 600;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #334155;
+    }
+    .student-name {
+      font-weight: 600;
+      color: #1e1b4b;
+    }
+    .badge-days {
+      background: #e0e7ff;
+      color: #3730a3;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-role {
+      background: #f1f5f9;
+      color: #475569;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge-role.admin {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .btn-delete {
+      background: #fff1f2;
+      color: #e11d48;
+      border: 1px solid #fecdd3;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-delete:hover { background: #ffe4e6; }
+    .empty-state {
+      text-align: center;
+      color: #94a3b8;
+      padding: 24px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="brand">
+      <h1>Acadeno Technologies</h1>
+    </div>
+    <a href="/logout" class="logout-btn">Logout</a>
+  </div>
+
+  <div class="container">
+    <div class="grid">
+      <!-- Add Student Form -->
+      <div class="card" style="margin-bottom: 0;">
+        <h2>🎓 Add / Update Student</h2>
+        <form action="/add-student" method="POST">
+          <div class="form-group">
+            <label for="student_name">Student Name</label>
+            <input type="text" id="student_name" name="student_name" placeholder="e.g. Misna" required>
+          </div>
+          <div class="form-group">
+            <label for="student_email">Student Email</label>
+            <input type="email" id="student_email" name="student_email" placeholder="student@gmail.com" required>
+          </div>
+          <button type="submit" class="btn-submit">Save Student & Sync Secrets</button>
+        </form>
+      </div>
+
+      <!-- Add System User Form -->
+      <div class="card" style="margin-bottom: 0;">
+        <h2>👤 Add System User</h2>
+        <form action="/add-user" method="POST">
+          <div class="form-group">
+            <label for="email">User Email</label>
+            <input type="email" id="email" name="email" placeholder="user@gmail.com" required>
+          </div>
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" placeholder="••••••••" required>
+          </div>
+          <button type="submit" class="btn-submit">Add System User</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Student Table Card -->
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+        <h2 style="margin-bottom:0;">📋 Subscribed Students List</h2>
+        {% if students %}
+        <input type="text" id="studentSearch" placeholder="🔍 Search student name or email..." oninput="filterStudentTable()" style="max-width:280px; padding:8px 12px; font-size:13px; border:1.5px solid #e2e8f0; border-radius:8px; outline:none;">
+        {% endif %}
+      </div>
+      {% if students %}
+      <table id="studentTable">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Proper Name</th>
+            <th>Email</th>
+            <th>Registered</th>
+            <th>Active Days</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for student in students %}
+          <tr class="student-row">
+            <td>#{{ student.id }}</td>
+            <td class="student-name">{{ student.name }}</td>
+            <td class="student-email">{{ student.email }}</td>
+            <td>{{ student.created }}</td>
+            <td><span class="badge-days">{{ student.days }} days</span></td>
+            <td>
+              <form action="/delete-student/{{ student.id }}" method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to remove this student?');">
+                <button type="submit" class="btn-delete">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <script>
+        function filterStudentTable() {
+          const q = document.getElementById('studentSearch').value.toLowerCase().trim();
+          const rows = document.querySelectorAll('.student-row');
+          rows.forEach(row => {
+            const name = row.querySelector('.student-name')?.innerText.toLowerCase() || '';
+            const email = row.querySelector('.student-email')?.innerText.toLowerCase() || '';
+            row.style.display = (name.includes(q) || email.includes(q)) ? '' : 'none';
+          });
+        }
+      </script>
+      {% else %}
+      <div class="empty-state">
+        <p>No students registered yet. Add a student using the form above!</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- System Users Table Card -->
+    <div class="card">
+      <h2>🔑 Registered System Users (Dashboard Accounts)</h2>
+      {% if system_users %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Username / Email</th>
+            <th>Role</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sys_user in system_users %}
+          <tr>
+            <td>#{{ sys_user.id }}</td>
+            <td class="student-name">{{ sys_user.email or sys_user.username }}</td>
+            <td>
+              <span class="badge-role {% if sys_user.role == 'admin' %}admin{% endif %}">{{ sys_user.role }}</span>
+            </td>
+            <td>
+              {% if sys_user.role != 'admin' %}
+              <form action="/delete-user/{{ sys_user.id }}" method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to remove this user account?');">
+                <button type="submit" class="btn-delete">Delete</button>
+              </form>
+              {% else %}
+              <span style="color:#94a3b8;font-size:12px;">Protected Admin</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">
+        <p>No system user accounts registered yet.</p>
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+</body>
+</html>

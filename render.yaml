@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: acadeno-app
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn auth_app:app

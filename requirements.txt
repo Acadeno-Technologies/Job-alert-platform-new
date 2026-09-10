@@ -1,0 +1,12 @@
+selenium
+webdriver-manager
+pandas
+beautifulsoup4
+python-dotenv
+requests
+selenium
+pandas
+Flask
+flask-bcrypt
+gunicorn
+PyNaCl
