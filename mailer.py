@@ -14,6 +14,7 @@ from email.mime.text import MIMEText
 
 import sys
 import re
+import traceback
 
 if hasattr(sys.stdout, 'reconfigure'):
     try:
@@ -437,8 +438,12 @@ def send_all_emails():
         msg.attach(MIMEText(plain_text, "plain"))
         msg.attach(MIMEText(html, "html"))
 
-        server.send_message(msg)
-        print(f"[OK] Email sent to {formatted_name} ({clean_email})")
+        try:
+            server.send_message(msg)
+            print(f"[OK] Email sent to {formatted_name} ({clean_email})")
+        except Exception as send_err:
+            print(f"[ERROR] Failed to send email to {formatted_name} ({clean_email}): {send_err}")
+            traceback.print_exc()
 
     server.quit()
 
