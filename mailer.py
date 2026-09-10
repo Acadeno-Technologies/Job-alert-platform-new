@@ -33,8 +33,24 @@ def parse_secrets_list(val):
 # LOAD STUDENTS
 # ==========================================================
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def load_students():
-    # GitHub Actions or Environment Variables
+    # 1. Primary: JSON file containing all student records
+    students_json_path = os.path.join(BASE_DIR, "students.json")
+    if os.path.exists(students_json_path):
+        print("Using students.json database")
+        try:
+            with open(students_json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                names = [item["name"].strip().title() for item in data if item.get("email")]
+                emails = [item["email"].strip() for item in data if item.get("email")]
+                if emails:
+                    return names, emails
+        except Exception as err:
+            print("Note reading students.json:", err)
+
+    # 2. GitHub Secrets or Environment Variables
     email_to = os.getenv("EMAIL_TO")
     student_names = os.getenv("STUDENT_NAMES")
 
@@ -53,11 +69,12 @@ def load_students():
         print("Using GitHub Secrets / Environment Variables")
         return names, emails
 
-    # Local SQLite Database
-    if os.path.exists("users.db"):
+    # 3. Local SQLite Database
+    users_db_path = os.path.join(BASE_DIR, "users.db")
+    if os.path.exists(users_db_path):
         print("Using SQLite Database")
         try:
-            conn = sqlite3.connect("users.db")
+            conn = sqlite3.connect(users_db_path)
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT name, email
@@ -75,7 +92,7 @@ def load_students():
         except Exception as e:
             print("Note reading users.db:", e)
 
-    # Fallback to EMAIL_USER if no recipient found
+    # 4. Fallback to EMAIL_USER if no recipient found
     if os.getenv("EMAIL_USER"):
         fallback_email = os.getenv("EMAIL_USER").strip()
         print(f"Fallback recipient: {fallback_email}")
