@@ -4,10 +4,10 @@ load_dotenv()
 import create_db
 create_db.init_database()
 
-import sqlite3, smtplib, os, requests, json
+import sqlite3, smtplib, os, requests, json, subprocess
 from datetime import datetime
 
-from flask import Flask, render_template, request, redirect, session
+from flask import Flask, render_template, request, redirect, session, jsonify
 from flask_bcrypt import Bcrypt
 from itsdangerous import URLSafeTimedSerializer
 from email.mime.text import MIMEText
@@ -534,6 +534,26 @@ def reset(token):
         return redirect("/")
 
     return render_template("reset.html")
+
+# ================== CRON TRIGGER FOR JOB EMAILS ==================
+
+CRON_SECRET = os.getenv("CRON_SECRET")
+
+@app.route("/send-emails", methods=["GET", "POST"])
+def trigger_send_emails():
+    token = request.args.get("token")
+    if not CRON_SECRET or token != CRON_SECRET:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    result = subprocess.run(
+        ["python", "mailer.py"],
+        capture_output=True, text=True
+    )
+    return jsonify({
+        "status": "done",
+        "stdout": result.stdout[-2000:],
+        "stderr": result.stderr[-2000:]
+    })
 
 # ================== ERROR HANDLER ==================
 
