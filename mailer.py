@@ -23,11 +23,26 @@ if hasattr(sys.stdout, 'reconfigure'):
         pass
 
 def parse_secrets_list(val):
+    """Parse a string containing multiple items separated by commas, semicolons, newlines, or carriage returns."""
     if not val:
         return []
-    # Split on commas, semicolons, carriage returns, or newlines
-    items = re.split(r'[,;\r\n]+', str(val))
-    return [i.replace('\r', '').replace('\n', '').strip() for i in items if i.strip()]
+    
+    # Convert to string and normalize line endings
+    val_str = str(val)
+    
+    # Replace all types of line endings with commas for uniform splitting
+    val_str = val_str.replace('\r\n', ',').replace('\r', ',').replace('\n', ',')
+    
+    # Split on commas and semicolons
+    items = re.split(r'[,;]+', val_str)
+    
+    # Clean up each item: strip whitespace and filter out empty strings
+    cleaned = [item.strip() for item in items if item.strip()]
+    
+    # Additional sanitization: remove any remaining control characters
+    cleaned = [re.sub(r'[\r\n\x00-\x1f]', '', item) for item in cleaned]
+    
+    return cleaned
 
 # ==========================================================
 # LOAD STUDENTS
@@ -116,8 +131,9 @@ if EMAIL_PASS:
 
 USER_NAME, EMAIL_TO = load_students()
 
-# *** CRITICAL FIX: Sanitize EMAIL_TO list to remove all newlines and carriage returns ***
-EMAIL_TO = [email.replace("\r", "").replace("\n", "").strip() for email in EMAIL_TO if email.strip()]
+# *** FINAL SANITIZATION: Remove all control characters from EMAIL_TO ***
+EMAIL_TO = [re.sub(r'[\r\n\x00-\x1f]', '', str(email)).strip() for email in EMAIL_TO if str(email).strip()]
+USER_NAME = [re.sub(r'[\r\n\x00-\x1f]', '', str(name)).strip() for name in USER_NAME if str(name).strip()]
 
 print("=" * 60)
 print("Sender Email :", EMAIL_USER)
@@ -280,9 +296,9 @@ if jobs:
         elif cat == 5:
             badge_html = '<span style="background:#fae8ff;color:#86198f;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:8px;">🤖 AI & Data Science</span>'
         elif cat == 1:
-            badge_html = '<span style="background:#e0e7ff;color:#4338ca;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:8px;">🎓 IT Fresher / Entry Level</span>'
+            badge_html = '<span style="background:#e0e7ff;color:#4338ca;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:8px;">🎓 IT Fresher Entry Level</span>'
         elif cat == 2:
-            badge_html = '<span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:8px;">💻 Software & IT Role</span>'
+            badge_html = '<span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:8px;">💻 Software & IT</span>'
         elif cat == 3:
             badge_html = '<span style="background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;display:inline-block;margin-bottom:8px;">🌟 General Entry Level</span>'
         else:
@@ -300,7 +316,7 @@ if jobs:
         ">
             {badge_html}
             <h3 style="color:#5f2cff;margin-top:4px;margin-bottom:12px;font-size:16px;line-height:1.4;">{title}</h3>
-            <a href="{link}" target="_blank" style="background:#5f2cff;color:white;padding:9px 18px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:700;font-size:13px;">Apply Now ↗</a>
+            <a href="{link}" target="_blank" style="background:#5f2cff;color:white;padding:9px 18px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:700;font-size:13px;">Apply Now</a>
         </div>
         """
 
@@ -438,9 +454,9 @@ def send_all_emails():
         sys.exit(1)
 
     for raw_email, raw_name in zip(EMAIL_TO, USER_NAME):
-        # *** CRITICAL FIX: Sanitize each email and name - remove all newlines and carriage returns ***
-        clean_email = str(raw_email).replace("\r", "").replace("\n", "").strip()
-        clean_name = str(raw_name).replace("\r", "").replace("\n", "").strip()
+        # Final sanitization: remove all control characters and trim
+        clean_email = re.sub(r'[\r\n\x00-\x1f]', '', str(raw_email)).strip()
+        clean_name = re.sub(r'[\r\n\x00-\x1f]', '', str(raw_name)).strip()
 
         if not clean_email or "@" not in clean_email:
             print(f"[SKIP] Invalid email format: {clean_email}")
@@ -453,14 +469,18 @@ def send_all_emails():
             formatted_name
         )
 
-        plain_text = f"Dear {formatted_name},\n\nHere are today's verified IT opportunities from Acadeno Technologies ({today}).\n\nPlease view the HTML version of this email or visit our portal at http://127.0.0.1:5000/user to apply."
+        plain_text = f"Dear {formatted_name},\n\nHere are today's verified IT opportunities from Acadeno Technologies ({today}).\n\nPlease view the HTML version of this email or visit our portal.\n\nBest Regards,\nAcadeno Technologies"
 
         msg = MIMEMultipart("alternative")
 
-        # *** CRITICAL FIX: Sanitize all header values ***
-        subject = f"Today's Verified IT Openings - {today}".replace("\r", "").replace("\n", "").strip()
-        from_addr = f"Acadeno Careers <{EMAIL_USER}>".replace("\r", "").replace("\n", "").strip()
-        reply_to = str(EMAIL_USER).replace("\r", "").replace("\n", "").strip()
+        # Sanitize all header values - ensure no control characters
+        subject = f"Today's Verified IT Openings - {today}"
+        subject = re.sub(r'[\r\n\x00-\x1f]', '', subject).strip()
+        
+        from_addr = f"Acadeno Careers <{EMAIL_USER}>"
+        from_addr = re.sub(r'[\r\n\x00-\x1f]', '', from_addr).strip()
+        
+        reply_to = re.sub(r'[\r\n\x00-\x1f]', '', str(EMAIL_USER)).strip()
 
         msg["Subject"] = subject
         msg["From"] = from_addr
