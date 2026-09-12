@@ -4,10 +4,10 @@ load_dotenv()
 import create_db
 create_db.init_database()
 
-import sqlite3, smtplib, os, requests, json
+import sqlite3, smtplib, os, requests, json, subprocess
 from datetime import datetime
 
-from flask import Flask, render_template, request, redirect, session
+from flask import Flask, render_template, request, redirect, session, jsonify
 from flask_bcrypt import Bcrypt
 from itsdangerous import URLSafeTimedSerializer
 from email.mime.text import MIMEText
@@ -468,14 +468,17 @@ def user():
         clean_title = title.split("\n")[0].strip()
         encoded_title = urllib.parse.quote_plus(clean_title)
 
-        if "technopark" in link or "technopark" in title.lower():
-            link = f"https://www.technopark.in/job-search?q={encoded_title}"
-        elif "cyberparks" in link or "cyberpark" in title.lower():
-            link = "https://cyberparks.in/careers/"
-        elif "smartcity" in link or "smartcity" in title.lower():
-            link = "https://smartcity-kochi.in/careers/"
-        else:
-            link = "https://infopark.in/company-jobs"
+        # Use the real scraped job link directly if it looks valid.
+        # Only fall back to a generic page when no real link was scraped at all.
+        if not link or link == "#" or not link.startswith("http"):
+            if "technopark" in title.lower():
+                link = f"https://www.technopark.in/job-search?q={encoded_title}"
+            elif "cyberpark" in title.lower():
+                link = "https://cyberparks.in/careers/"
+            elif "smartcity" in title.lower():
+                link = "https://smartcity-kochi.in/careers/"
+            else:
+                link = "https://infopark.in/company-jobs"
 
         tags_str, badges = classify_job_tags(title)
         processed_jobs.append({
@@ -534,6 +537,26 @@ def reset(token):
         return redirect("/")
 
     return render_template("reset.html")
+
+# ================== CRON TRIGGER FOR JOB EMAILS ==================
+
+CRON_SECRET = os.getenv("CRON_SECRET")
+
+@app.route("/send-emails", methods=["GET", "POST"])
+def trigger_send_emails():
+    token = request.args.get("token")
+    if not CRON_SECRET or token != CRON_SECRET:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    result = subprocess.run(
+        ["python", "mailer.py"],
+        capture_output=True, text=True
+    )
+    return jsonify({
+        "status": "done",
+        "stdout": result.stdout[-2000:],
+        "stderr": result.stderr[-2000:]
+    })
 
 # ================== ERROR HANDLER ==================
 

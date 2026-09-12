@@ -211,7 +211,7 @@ def classify_job(job):
 
 
 # ==========================================================
-# LINK CLEANER & 404 PREVENTER
+# LINK RESOLVER (Uses real scraped link first)
 # ==========================================================
 
 import urllib.parse
@@ -220,14 +220,20 @@ import requests
 def get_clean_working_url(job):
     link = job.get("link", "").strip()
     title = job.get("title", "").strip()
+
+    # Use the actual scraped job link directly if it exists and looks valid
+    if link and link.startswith("http"):
+        return link
+
+    # Fallback only when no real link was found at all
     clean_title = title.split("\n")[0].strip()
     encoded_title = urllib.parse.quote_plus(clean_title)
 
-    if "technopark" in link or "technopark" in title.lower():
+    if "technopark" in title.lower():
         return f"https://www.technopark.in/job-search?q={encoded_title}"
-    elif "cyberparks" in link or "cyberpark" in title.lower():
+    elif "cyberpark" in title.lower():
         return "https://cyberparks.in/careers/"
-    elif "smartcity" in link or "smartcity" in title.lower():
+    elif "smartcity" in title.lower():
         return "https://smartcity-kochi.in/careers/"
     else:
         return "https://infopark.in/company-jobs"
