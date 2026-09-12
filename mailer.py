@@ -15,6 +15,8 @@ from email.mime.text import MIMEText
 import sys
 import re
 import traceback
+import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 if hasattr(sys.stdout, 'reconfigure'):
     try:
@@ -23,35 +25,14 @@ if hasattr(sys.stdout, 'reconfigure'):
         pass
 
 def parse_secrets_list(val):
-    """Parse a string containing multiple items separated by commas, semicolons, newlines, or carriage returns."""
     if not val:
         return []
-    
-    # Convert to string and normalize line endings
-    val_str = str(val)
-    
-    # Replace all types of line endings with commas for uniform splitting
-    val_str = val_str.replace('\r\n', ',').replace('\r', ',').replace('\n', ',')
-    
-    # Split on commas and semicolons
-    items = re.split(r'[,;]+', val_str)
-    
-    # Clean up each item: strip whitespace and filter out empty strings
-    cleaned = [item.strip() for item in items if item.strip()]
-    
-    # Additional sanitization: remove any remaining control characters
-    cleaned = [re.sub(r'[\r\n\x00-\x1f]', '', item) for item in cleaned]
-    
-    return cleaned
-
-# ==========================================================
-# LOAD STUDENTS
-# ==========================================================
+    items = re.split(r'[,;\r\n]+', str(val))
+    return [i.replace('\r', '').replace('\n', '').strip() for i in items if i.strip()]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def load_students():
-    # 1. Primary: JSON file containing all student records
     students_json_path = os.path.join(BASE_DIR, "students.json")
     if os.path.exists(students_json_path):
         print("Using students.json database")
@@ -65,7 +46,6 @@ def load_students():
         except Exception as err:
             print("Note reading students.json:", err)
 
-    # 2. GitHub Secrets or Environment Variables
     email_to = os.getenv("EMAIL_TO")
     student_names = os.getenv("STUDENT_NAMES")
 
@@ -73,7 +53,6 @@ def load_students():
         emails = parse_secrets_list(email_to)
         names = parse_secrets_list(student_names)
 
-        # Ensure names array is as long as emails array
         while len(names) < len(emails):
             idx = len(names)
             fallback_name = emails[idx].split("@")[0].replace(".", " ").replace("_", " ").title()
@@ -84,7 +63,6 @@ def load_students():
         print("Using GitHub Secrets / Environment Variables")
         return names, emails
 
-    # 3. Local SQLite Database
     users_db_path = os.path.join(BASE_DIR, "users.db")
     if os.path.exists(users_db_path):
         print("Using SQLite Database")
@@ -107,7 +85,6 @@ def load_students():
         except Exception as e:
             print("Note reading users.db:", e)
 
-    # 4. Fallback to EMAIL_USER if no recipient found
     if os.getenv("EMAIL_USER"):
         fallback_email = os.getenv("EMAIL_USER").strip()
         print(f"Fallback recipient: {fallback_email}")
@@ -115,10 +92,6 @@ def load_students():
 
     return [], []
 
-
-# ==========================================================
-# ENV VARIABLES
-# ==========================================================
 
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
@@ -131,9 +104,7 @@ if EMAIL_PASS:
 
 USER_NAME, EMAIL_TO = load_students()
 
-# *** FINAL SANITIZATION: Remove all control characters from EMAIL_TO ***
-EMAIL_TO = [re.sub(r'[\r\n\x00-\x1f]', '', str(email)).strip() for email in EMAIL_TO if str(email).strip()]
-USER_NAME = [re.sub(r'[\r\n\x00-\x1f]', '', str(name)).strip() for name in USER_NAME if str(name).strip()]
+EMAIL_TO = [email.replace("\r", "").replace("\n", "").strip() for email in EMAIL_TO if email.strip()]
 
 print("=" * 60)
 print("Sender Email :", EMAIL_USER)
@@ -144,10 +115,6 @@ print("=" * 60)
 if not EMAIL_USER or not EMAIL_PASS:
     print("[WARNING] EMAIL_USER or EMAIL_PASS missing in .env file.")
     print("To send real emails, create a .env file with your Gmail credentials.")
-
-# ==========================================================
-# RANDOM QUOTE
-# ==========================================================
 
 quote = "Success is not final, failure is not fatal: it is the courage to continue that counts."
 quote_file = "scraper/career_quotes_unique.xlsx"
@@ -161,10 +128,6 @@ if os.path.exists(quote_file):
     except Exception as e:
         print("Note: Could not load quotes file, using default quote:", e)
 
-# ==========================================================
-# LOAD JOBS
-# ==========================================================
-
 jobs = []
 jobs_file = "scraper/jobs.json"
 if not os.path.exists(jobs_file):
@@ -177,26 +140,58 @@ if os.path.exists(jobs_file):
     except Exception as e:
         print("Note: Error loading jobs.json:", e)
 
-today = datetime.now().strftime("%d %B %Y")
+def is_link_working(url, timeout=6):
+    if not url or not url.startswith("http"):
+        return False
+    try:
+        resp = requests.head(url, timeout=timeout, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code in (405, 403):
+            resp = requests.get(url, timeout=timeout, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
+        return resp.status_code < 400
+    except Exception:
+        return False
 
-# ==========================================================
-# JOB PRIORITIZATION & CLASSIFICATION
-# ==========================================================
+
+def filter_working_jobs(job_list):
+    if not job_list:
+        return []
+
+    print(f"\nChecking {len(job_list)} job links for validity...")
+    working_jobs = []
+    broken_count = 0
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_job = {executor.submit(is_link_working, job.get("link", "")): job for job in job_list}
+        for future in as_completed(future_to_job):
+            job = future_to_job[future]
+            try:
+                if future.result():
+                    working_jobs.append(job)
+                else:
+                    broken_count += 1
+                    print(f"  [SKIPPED - Broken Link] {job.get('title', 'Unknown')}")
+            except Exception:
+                broken_count += 1
+
+    print(f"Result: {len(working_jobs)} working, {broken_count} broken/removed.\n")
+    return working_jobs
+
+
+jobs = filter_working_jobs(jobs)
+
+today = datetime.now().strftime("%d %B %Y")
 
 def classify_job(job):
     title = job.get("title", "").lower()
 
-    # 1. HR & Talent Management Roles
     hr_kw = ["hr ", "hr/", "hr-", "human resource", "recruiter", "talent acquisition", "hrbp", "payroll"]
     if any(kw in title for kw in hr_kw) or title.startswith("hr"):
-        return 6  # HR & Talent Management
+        return 6
 
-    # 2. AI & Data Science Roles
     ai_kw = ["ai", "ml", "machine learning", "data science", "data engineer", "data analyst", "power bi", "deep learning", "nlp", "sensing & ai"]
     if any(kw in title for kw in ai_kw):
-        return 5  # AI & Data Science Role
+        return 5
 
-    # Explicit Non-IT exclusion keywords
     non_it_exclusions = [
         "psychology", "research", "biology", "medical", "counselor", "teaching", "trainer", 
         "bpo", "voice", "data entry", "operator", "business development", "sales", "hr ", 
@@ -217,31 +212,24 @@ def classify_job(job):
     is_it = any(kw in title for kw in it_kw) and not is_excluded_from_it
 
     if is_fresher and is_it:
-        return 1  # IT Fresher / Entry Level
+        return 1
     elif is_it:
-        return 2  # Software & IT Role
+        return 2
     elif is_fresher:
-        return 3  # Non-IT Entry Level
+        return 3
     else:
-        return 4  # General Roles
+        return 4
 
-
-# ==========================================================
-# LINK RESOLVER (Uses real scraped link first)
-# ==========================================================
 
 import urllib.parse
-import requests
 
 def get_clean_working_url(job):
     link = job.get("link", "").strip()
     title = job.get("title", "").strip()
 
-    # Use the actual scraped job link directly if it exists and looks valid
     if link and link.startswith("http"):
         return link
 
-    # Fallback only when no real link was found at all
     clean_title = title.split("\n")[0].strip()
     encoded_title = urllib.parse.quote_plus(clean_title)
 
@@ -254,10 +242,6 @@ def get_clean_working_url(job):
     else:
         return "https://infopark.in/company-jobs"
 
-
-# ==========================================================
-# BUILD JOB CARDS
-# ==========================================================
 
 cards = ""
 
@@ -292,17 +276,17 @@ if jobs:
 
         badge_html = ""
         if cat == 6:
-            badge_html = '<span style="background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:8px;">👔 HR & Talent Management</span>'
+            badge_html = '<span style="background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:8px;">HR & Talent Management</span>'
         elif cat == 5:
-            badge_html = '<span style="background:#fae8ff;color:#86198f;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:8px;">🤖 AI & Data Science</span>'
+            badge_html = '<span style="background:#fae8ff;color:#86198f;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:8px;">AI & Data Science</span>'
         elif cat == 1:
-            badge_html = '<span style="background:#e0e7ff;color:#4338ca;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:8px;">🎓 IT Fresher Entry Level</span>'
+            badge_html = '<span style="background:#e0e7ff;color:#4338ca;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:8px;">IT Fresher / Entry Level</span>'
         elif cat == 2:
-            badge_html = '<span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:8px;">💻 Software & IT</span>'
+            badge_html = '<span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:8px;">Software & IT Role</span>'
         elif cat == 3:
-            badge_html = '<span style="background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;display:inline-block;margin-bottom:8px;">🌟 General Entry Level</span>'
+            badge_html = '<span style="background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;display:inline-block;margin-bottom:8px;">General Entry Level</span>'
         else:
-            badge_html = '<span style="background:#f3f4f6;color:#374151;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;display:inline-block;margin-bottom:8px;">📌 General Position</span>'
+            badge_html = '<span style="background:#f3f4f6;color:#374151;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;display:inline-block;margin-bottom:8px;">General Position</span>'
 
         return f"""
         <div style="
@@ -320,42 +304,33 @@ if jobs:
         </div>
         """
 
-    # 1. AI & Data Science Section (Top Priority)
     if ai_data_jobs:
-        cards += '<h3 style="color:#86198f;margin-top:25px;margin-bottom:15px;border-left:4px solid #c084fc;padding-left:10px;font-size:16px;">🤖 AI, ML & Data Science Openings</h3>'
+        cards += '<h3 style="color:#86198f;margin-top:25px;margin-bottom:15px;border-left:4px solid #c084fc;padding-left:10px;font-size:16px;">AI, ML & Data Science Openings</h3>'
         for j in ai_data_jobs:
             cards += render_job_card(j)
 
-    # 2. Software & IT Roles Section
     if general_it_jobs:
-        cards += '<h3 style="color:#1e40af;margin-top:30px;margin-bottom:15px;border-left:4px solid #3b82f6;padding-left:10px;font-size:16px;">💻 Software & IT Roles</h3>'
+        cards += '<h3 style="color:#1e40af;margin-top:30px;margin-bottom:15px;border-left:4px solid #3b82f6;padding-left:10px;font-size:16px;">Software & IT Roles</h3>'
         for j in general_it_jobs:
             cards += render_job_card(j)
 
-    # 3. IT Fresher Section
     if fresher_it_jobs:
-        cards += '<h3 style="color:#3730a3;margin-top:30px;margin-bottom:15px;border-left:4px solid #6366f1;padding-left:10px;font-size:16px;">🎓 IT Fresher & Entry Level Openings</h3>'
+        cards += '<h3 style="color:#3730a3;margin-top:30px;margin-bottom:15px;border-left:4px solid #6366f1;padding-left:10px;font-size:16px;">IT Fresher & Entry Level Openings</h3>'
         for j in fresher_it_jobs:
             cards += render_job_card(j)
 
-    # 4. HR & Talent Management Section (Below Tech)
     if hr_jobs:
-        cards += '<h3 style="color:#b45309;margin-top:30px;margin-bottom:15px;border-left:4px solid #f59e0b;padding-left:10px;font-size:16px;">👔 HR & Talent Management Openings</h3>'
+        cards += '<h3 style="color:#b45309;margin-top:30px;margin-bottom:15px;border-left:4px solid #f59e0b;padding-left:10px;font-size:16px;">HR & Talent Management Openings</h3>'
         for j in hr_jobs:
             cards += render_job_card(j)
 
-    # 5. Non-IT & General Roles Section
     if general_list:
-        cards += '<h3 style="color:#92400e;margin-top:30px;margin-bottom:15px;border-left:4px solid #f59e0b;padding-left:10px;font-size:16px;">🌐 Non-IT & General Positions</h3>'
+        cards += '<h3 style="color:#92400e;margin-top:30px;margin-bottom:15px;border-left:4px solid #f59e0b;padding-left:10px;font-size:16px;">Non-IT & General Positions</h3>'
         for j in general_list:
             cards += render_job_card(j)
 else:
     search_filter_bar = ""
     cards = "<p style='color:#666;'>No active job postings found today. Please check back soon!</p>"
-
-# ==========================================================
-# EMAIL TEMPLATE
-# ==========================================================
 
 html_template = f"""
 <!DOCTYPE html>
@@ -365,7 +340,6 @@ html_template = f"""
 </head>
 <body style="font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;background:#f4f6fb;margin:0;padding:12px;">
 
-<!-- Hidden Email Inbox Preheader Snippet -->
 <div style="display:none;font-size:1px;color:#f4f6fb;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;mso-hide:all;">
 Explore today's verified IT job openings & search roles on Acadeno Technologies.
 </div>
@@ -412,10 +386,6 @@ Best Wishes,<br>
 </html>
 """
 
-# ==========================================================
-# SEND EMAIL
-# ==========================================================
-
 def send_all_emails():
     if not EMAIL_USER or not EMAIL_PASS:
         print("\n[ERROR] Cannot send email because EMAIL_USER or EMAIL_PASS is missing in .env / GitHub Secrets!")
@@ -454,9 +424,8 @@ def send_all_emails():
         sys.exit(1)
 
     for raw_email, raw_name in zip(EMAIL_TO, USER_NAME):
-        # Final sanitization: remove all control characters and trim
-        clean_email = re.sub(r'[\r\n\x00-\x1f]', '', str(raw_email)).strip()
-        clean_name = re.sub(r'[\r\n\x00-\x1f]', '', str(raw_name)).strip()
+        clean_email = str(raw_email).replace("\r", "").replace("\n", "").strip()
+        clean_name = str(raw_name).replace("\r", "").replace("\n", "").strip()
 
         if not clean_email or "@" not in clean_email:
             print(f"[SKIP] Invalid email format: {clean_email}")
@@ -469,18 +438,13 @@ def send_all_emails():
             formatted_name
         )
 
-        plain_text = f"Dear {formatted_name},\n\nHere are today's verified IT opportunities from Acadeno Technologies ({today}).\n\nPlease view the HTML version of this email or visit our portal.\n\nBest Regards,\nAcadeno Technologies"
+        plain_text = f"Dear {formatted_name},\n\nHere are today's verified IT opportunities from Acadeno Technologies ({today}).\n\nPlease view the HTML version of this email or visit our portal at http://127.0.0.1:5000/user to apply."
 
         msg = MIMEMultipart("alternative")
 
-        # Sanitize all header values - ensure no control characters
-        subject = f"Today's Verified IT Openings - {today}"
-        subject = re.sub(r'[\r\n\x00-\x1f]', '', subject).strip()
-        
-        from_addr = f"Acadeno Careers <{EMAIL_USER}>"
-        from_addr = re.sub(r'[\r\n\x00-\x1f]', '', from_addr).strip()
-        
-        reply_to = re.sub(r'[\r\n\x00-\x1f]', '', str(EMAIL_USER)).strip()
+        subject = f"Today's Verified IT Openings - {today}".replace("\r", "").replace("\n", "").strip()
+        from_addr = f"Acadeno Careers <{EMAIL_USER}>".replace("\r", "").replace("\n", "").strip()
+        reply_to = str(EMAIL_USER).replace("\r", "").replace("\n", "").strip()
 
         msg["Subject"] = subject
         msg["From"] = from_addr
